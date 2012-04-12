@@ -6,10 +6,10 @@ module Thin
   # that is opened.
   class Connection < EventMachine::Connection
     include Logging
-    
+
     # This is a template async response. N.B. Can't use string for body on 1.9
     AsyncResponse = [-1, {}, []].freeze
-    
+
     # Rack application (adapter) served by this connection.
     attr_accessor :app
 
@@ -25,7 +25,7 @@ module Thin
     # Calling the application in a threaded allowing
     # concurrent processing of requests.
     attr_writer :threaded
-    
+
     # Get the connection ready to process a request.
     def post_init
       @request  = Request.new
@@ -39,7 +39,8 @@ module Thin
     rescue InvalidRequest => e
       log "!! Invalid request"
       log_error e
-      close_connection
+      send_data "HTTP/1.0 400  Bad Request\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\nBad Request!\r\n"
+      close_connection_after_writing
     end
 
     # Called when all data was received and the request
@@ -59,13 +60,13 @@ module Thin
       @request.remote_address = remote_address
 
       # Connection may be closed unless the App#call response was a [-1, ...]
-      # It should be noted that connection objects will linger until this 
+      # It should be noted that connection objects will linger until this
       # callback is no longer referenced, so be tidy!
       @request.async_callback = method(:post_process)
-      
+
       if @backend.ssl?
         @request.env["rack.url_scheme"] = "https"
-        
+
         if cert = get_peer_cert
           @request.env['rack.peer_cert'] = cert
         end
@@ -89,7 +90,7 @@ module Thin
     def post_process(result)
       return unless result
       result = result.to_a
-      
+
       # Status code -1 indicates that we're going to respond later (async).
       return if result.first == AsyncResponse.first
 
